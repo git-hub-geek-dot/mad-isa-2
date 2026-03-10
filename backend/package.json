@@ -1,0 +1,10 @@
+{
+  "name": "dynamic-scenario-game-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test"
+  }
+}
