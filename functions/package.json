@@ -1,0 +1,16 @@
+{
+  "name": "dynamic-scenario-game-functions",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22"
+  },
+  "main": "index.js",
+  "scripts": {
+    "serve": "firebase emulators:start --only functions,firestore,hosting",
+    "deploy": "firebase deploy --only functions,firestore:rules,hosting"
+  },
+  "dependencies": {
+    "firebase-functions": "^6.5.0"
+  }
+}

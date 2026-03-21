@@ -15,6 +15,6 @@ const gameService = createGameService({
 });
 const server = createServer({ gameService });
 
-server.listen(config.port, () => {
-  console.log(`Backend listening on http://localhost:${config.port}`);
+server.listen(config.port, config.host, () => {
+  console.log(`Backend listening on http://${config.host}:${config.port}`);
 });

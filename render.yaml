@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: mad-isa-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: HOST
+        value: 0.0.0.0
+      - key: USE_MOCK_AI
+        value: "false"
+      - key: AI_API_URL
+        value: https://api.groq.com/openai/v1/chat/completions
+      - key: AI_MODEL
+        value: llama-3.1-8b-instant
+      - key: DEFAULT_MAX_ROUNDS
+        value: "4"
+      - key: AI_API_KEY
+        sync: false

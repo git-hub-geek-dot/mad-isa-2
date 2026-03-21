@@ -1,5 +1,7 @@
+import 'package:dynamic_scenario_game/core/firebase/firebase_bootstrap.dart';
 import 'package:dynamic_scenario_game/features/game/domain/models/game_category.dart';
 import 'package:dynamic_scenario_game/features/game/presentation/controllers/game_controller.dart';
+import 'package:dynamic_scenario_game/features/history/domain/models/game_history_entry.dart';
 import 'package:flutter/material.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -7,10 +9,12 @@ class HomeScreen extends StatefulWidget {
     super.key,
     required this.controller,
     required this.usesMockApi,
+    required this.firebaseBootstrap,
   });
 
   final GameController controller;
   final bool usesMockApi;
+  final FirebaseBootstrapResult firebaseBootstrap;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -73,6 +77,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   'Pick a chaos lane, press play, and survive four rounds of escalating consequences.',
                   style: theme.textTheme.bodyLarge,
                 ),
+                const SizedBox(height: 18),
+                _FirebaseStatusCard(firebaseBootstrap: widget.firebaseBootstrap),
                 if (errorMessage != null) ...[
                   const SizedBox(height: 18),
                   _ErrorBanner(
@@ -82,23 +88,28 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
                 const SizedBox(height: 24),
                 Expanded(
-                  child: ListView.separated(
-                    itemCount: GameCategory.presets.length,
-                    separatorBuilder: (_, index) =>
+                  child: ListView(
+                    children: [
+                      if (widget.firebaseBootstrap.historyService != null) ...[
+                        _HistorySection(
+                          historyStream: widget.firebaseBootstrap.historyService!
+                              .watchRecentRuns(),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      for (final category in GameCategory.presets) ...[
+                        _CategoryCard(
+                          category: category,
+                          isSelected: category.id == _selectedCategory.id,
+                          onTap: () {
+                            setState(() {
+                              _selectedCategory = category;
+                            });
+                          },
+                        ),
                         const SizedBox(height: 14),
-                    itemBuilder: (context, index) {
-                      final category = GameCategory.presets[index];
-                      final isSelected = category.id == _selectedCategory.id;
-                      return _CategoryCard(
-                        category: category,
-                        isSelected: isSelected,
-                        onTap: () {
-                          setState(() {
-                            _selectedCategory = category;
-                          });
-                        },
-                      );
-                    },
+                      ],
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -120,6 +131,148 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+}
+
+class _FirebaseStatusCard extends StatelessWidget {
+  const _FirebaseStatusCard({required this.firebaseBootstrap});
+
+  final FirebaseBootstrapResult firebaseBootstrap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isReady = firebaseBootstrap.isReady;
+    final background = isReady
+        ? const Color(0xFF173D2D)
+        : const Color(0xFFF4E5D0);
+    final foreground = isReady ? const Color(0xFFF6EAD7) : const Color(0xFF1B1A18);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              firebaseBootstrap.statusLabel,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: foreground,
+                    fontSize: 18,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              isReady
+                  ? 'Anonymous auth is active and completed runs will be saved to Firestore.'
+                  : firebaseBootstrap.errorMessage ??
+                      'Add Firebase app options with --dart-define values before auth and history can turn on.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: foreground.withValues(alpha: 0.88),
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HistorySection extends StatelessWidget {
+  const _HistorySection({required this.historyStream});
+
+  final Stream<List<GameHistoryEntry>> historyStream;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return StreamBuilder<List<GameHistoryEntry>>(
+      stream: historyStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final items = snapshot.data ?? const [];
+        if (items.isEmpty) {
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.76),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: const Padding(
+              padding: EdgeInsets.all(18),
+              child: Text('No saved runs yet. Finish one game and it will appear here.'),
+            ),
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Recent Runs',
+              style: theme.textTheme.titleLarge,
+            ),
+            const SizedBox(height: 10),
+            for (final item in items) ...[
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.82),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.categoryTitle,
+                        style: theme.textTheme.titleLarge?.copyWith(fontSize: 18),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        item.endingTitle,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        item.roastLine,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${item.roundsPlayed} rounds • ${_formatCompletedAt(item.completedAt)}',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                              color: const Color(0xFF4E3C2D),
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  String _formatCompletedAt(DateTime value) {
+    final hour = value.hour == 0 ? 12 : (value.hour > 12 ? value.hour - 12 : value.hour);
+    final minute = value.minute.toString().padLeft(2, '0');
+    final suffix = value.hour >= 12 ? 'PM' : 'AM';
+    return '${value.day}/${value.month}/${value.year} $hour:$minute $suffix';
   }
 }
 

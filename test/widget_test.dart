@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   testWidgets('app renders home screen title', (tester) async {
     await tester.pumpWidget(const AiScenarioGameApp());
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     expect(
       find.text('AI-Based Dynamic Scenario Simulation Game'),

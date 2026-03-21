@@ -40,6 +40,7 @@ export function loadDotEnv(
 
 export function loadConfig(env = process.env) {
   const port = parseInteger(env.PORT, 8787);
+  const host = readOptionalString(env.HOST) ?? '0.0.0.0';
   const defaultMaxRounds = clamp(parseInteger(env.DEFAULT_MAX_ROUNDS, 4), 2, 6);
   const useMockAi = parseBoolean(env.USE_MOCK_AI, true);
   const aiApiUrl =
@@ -65,6 +66,7 @@ export function loadConfig(env = process.env) {
 
   return {
     port,
+    host,
     defaultMaxRounds,
     useMockAi,
     aiApiUrl,
@@ -84,6 +86,15 @@ function parseBoolean(value, fallback) {
   }
 
   return !['0', 'false', 'no', 'off'].includes(value.trim().toLowerCase());
+}
+
+function readOptionalString(value) {
+  if (typeof value != 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed == '' ? null : trimmed;
 }
 
 function clamp(value, min, max) {

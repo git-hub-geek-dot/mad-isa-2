@@ -1,5 +1,6 @@
 import 'package:dynamic_scenario_game/app/theme/app_theme.dart';
 import 'package:dynamic_scenario_game/core/config/app_config.dart';
+import 'package:dynamic_scenario_game/core/firebase/firebase_bootstrap.dart';
 import 'package:dynamic_scenario_game/core/network/scenario_api_client.dart';
 import 'package:dynamic_scenario_game/features/game/data/game_repository_impl.dart';
 import 'package:dynamic_scenario_game/features/game/data/mock_scenario_api_client.dart';
@@ -11,7 +12,13 @@ import 'package:dynamic_scenario_game/features/game/presentation/screens/result_
 import 'package:flutter/material.dart';
 
 class AiScenarioGameApp extends StatefulWidget {
-  const AiScenarioGameApp({super.key});
+  const AiScenarioGameApp({
+    super.key,
+    this.firebaseBootstrap =
+        const FirebaseBootstrapResult.disabled(statusLabel: 'Firebase not configured'),
+  });
+
+  final FirebaseBootstrapResult firebaseBootstrap;
 
   @override
   State<AiScenarioGameApp> createState() => _AiScenarioGameAppState();
@@ -27,6 +34,8 @@ class _AiScenarioGameAppState extends State<AiScenarioGameApp> {
     final apiClient = _buildApiClient();
     _controller = GameController(
       repository: GameRepositoryImpl(apiClient: apiClient),
+      authService: widget.firebaseBootstrap.authService,
+      historyService: widget.firebaseBootstrap.historyService,
     );
   }
 
@@ -81,6 +90,7 @@ class _AiScenarioGameAppState extends State<AiScenarioGameApp> {
           return HomeScreen(
             controller: _controller,
             usesMockApi: _usesMockApi,
+            firebaseBootstrap: widget.firebaseBootstrap,
           );
         },
       ),
