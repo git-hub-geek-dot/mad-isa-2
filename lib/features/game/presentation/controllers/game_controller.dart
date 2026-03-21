@@ -22,9 +22,9 @@ class GameController extends ChangeNotifier {
     required GameRepository repository,
     FirebaseAuthService? authService,
     GameHistoryService? historyService,
-  })  : _repository = repository,
-        _authService = authService,
-        _historyService = historyService;
+  }) : _repository = repository,
+       _authService = authService,
+       _historyService = historyService;
 
   final GameRepository _repository;
   final FirebaseAuthService? _authService;
@@ -60,7 +60,6 @@ class GameController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _authService?.ensureSignedIn();
       final nextSession = await _repository.startGame(
         category: category,
         maxRounds: AppConfig.defaultRounds,
@@ -141,7 +140,13 @@ class GameController extends ChangeNotifier {
   Future<void> _saveHistory(GameSession finalSession) async {
     final historyService = _historyService;
     final category = _lastCategory;
-    if (historyService == null || category == null) {
+    final authService = _authService;
+    if (
+      historyService == null ||
+      category == null ||
+      authService == null ||
+      !authService.isSignedIn
+    ) {
       return;
     }
 

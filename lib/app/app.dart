@@ -14,8 +14,9 @@ import 'package:flutter/material.dart';
 class AiScenarioGameApp extends StatefulWidget {
   const AiScenarioGameApp({
     super.key,
-    this.firebaseBootstrap =
-        const FirebaseBootstrapResult.disabled(statusLabel: 'Firebase not configured'),
+    this.firebaseBootstrap = const FirebaseBootstrapResult.disabled(
+      statusLabel: 'Firebase not configured',
+    ),
   });
 
   final FirebaseBootstrapResult firebaseBootstrap;
@@ -54,6 +55,42 @@ class _AiScenarioGameAppState extends State<AiScenarioGameApp> {
     return MockScenarioApiClient();
   }
 
+  String _screenKeyForCurrentState() {
+    final session = _controller.session;
+    if (session?.isFinal ?? false) {
+      return 'result';
+    }
+
+    if (session != null || _controller.stage == GameStage.starting) {
+      return 'game';
+    }
+
+    return 'home';
+  }
+
+  Widget _buildCurrentScreen() {
+    final session = _controller.session;
+
+    if (session?.isFinal ?? false) {
+      return ResultScreen(
+        session: session!,
+        usesMockApi: _usesMockApi,
+        onPlayAgain: _controller.playAgain,
+        onBackHome: _controller.backToHome,
+      );
+    }
+
+    if (session != null || _controller.stage == GameStage.starting) {
+      return GameScreen(controller: _controller, usesMockApi: _usesMockApi);
+    }
+
+    return HomeScreen(
+      controller: _controller,
+      usesMockApi: _usesMockApi,
+      firebaseBootstrap: widget.firebaseBootstrap,
+    );
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -63,34 +100,49 @@ class _AiScenarioGameAppState extends State<AiScenarioGameApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Dynamic Scenario Game',
+      title: 'Chaos Simulator',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.build(),
       home: AnimatedBuilder(
         animation: _controller,
         builder: (context, _) {
-          final session = _controller.session;
+          final screenKey = _screenKeyForCurrentState();
+          final screen = _buildCurrentScreen();
 
-          if (session?.isFinal ?? false) {
-            return ResultScreen(
-              session: session!,
-              usesMockApi: _usesMockApi,
-              onPlayAgain: _controller.playAgain,
-              onBackHome: _controller.backToHome,
-            );
-          }
-
-          if (session != null || _controller.stage == GameStage.starting) {
-            return GameScreen(
-              controller: _controller,
-              usesMockApi: _usesMockApi,
-            );
-          }
-
-          return HomeScreen(
-            controller: _controller,
-            usesMockApi: _usesMockApi,
-            firebaseBootstrap: widget.firebaseBootstrap,
+          return AnimatedSwitcher(
+            duration: const Duration(milliseconds: 320),
+            reverseDuration: const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            layoutBuilder: (currentChild, previousChildren) {
+              return Stack(
+                alignment: Alignment.topLeft,
+                children: [
+                  ...previousChildren,
+                  ?currentChild,
+                ],
+              );
+            },
+            transitionBuilder: (child, animation) {
+              final curved = CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              );
+              return FadeTransition(
+                opacity: curved,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0.03, 0.02),
+                    end: Offset.zero,
+                  ).animate(curved),
+                  child: ScaleTransition(
+                    scale: Tween<double>(begin: 0.985, end: 1).animate(curved),
+                    child: child,
+                  ),
+                ),
+              );
+            },
+            child: KeyedSubtree(key: ValueKey(screenKey), child: screen),
           );
         },
       ),

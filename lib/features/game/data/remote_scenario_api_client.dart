@@ -1,37 +1,34 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:dynamic_scenario_game/core/network/game_api_exception.dart';
 import 'package:dynamic_scenario_game/core/network/scenario_api_client.dart';
 import 'package:dynamic_scenario_game/features/game/domain/models/choice_option.dart';
 import 'package:dynamic_scenario_game/features/game/domain/models/game_category.dart';
 import 'package:dynamic_scenario_game/features/game/domain/models/game_session.dart';
+import 'package:http/http.dart' as http;
 
 class RemoteScenarioApiClient implements ScenarioApiClient {
   RemoteScenarioApiClient({
     required this.baseUrl,
     this.apiKey = '',
-    HttpClient? httpClient,
-  }) : _httpClient = httpClient ?? HttpClient();
+    http.Client? httpClient,
+  }) : _httpClient = httpClient ?? http.Client();
 
   final String baseUrl;
   final String apiKey;
-  final HttpClient _httpClient;
+  final http.Client _httpClient;
 
   @override
   Future<GameSession> startGame({
     required GameCategory category,
     required int maxRounds,
   }) {
-    return _post(
-      '/game/start',
-      {
-        'theme': category.id,
-        'tone': 'dark_comedy',
-        'maxRounds': maxRounds,
-        'promptHint': category.promptHint,
-      },
-    );
+    return _post('/game/start', {
+      'theme': category.id,
+      'tone': 'dark_comedy',
+      'maxRounds': maxRounds,
+      'promptHint': category.promptHint,
+    });
   }
 
   @override
@@ -39,33 +36,25 @@ class RemoteScenarioApiClient implements ScenarioApiClient {
     required GameSession session,
     required ChoiceOption choice,
   }) {
-    return _post(
-      '/game/continue',
-      {
-        'sessionId': session.sessionId,
-        'selectedChoiceId': choice.id,
-        'selectedChoiceText': choice.text,
-      },
-    );
+    return _post('/game/continue', {
+      'sessionId': session.sessionId,
+      'selectedChoiceId': choice.id,
+      'selectedChoiceText': choice.text,
+    });
   }
 
-  Future<GameSession> _post(
-    String path,
-    Map<String, dynamic> payload,
-  ) async {
+  Future<GameSession> _post(String path, Map<String, dynamic> payload) async {
     try {
-      final uri = Uri.parse('$baseUrl$path');
-      final request = await _httpClient.postUrl(uri);
-      request.headers.contentType = ContentType.json;
+      final response = await _httpClient.post(
+        Uri.parse('$baseUrl$path'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode(payload),
+      );
 
-      if (apiKey.isNotEmpty) {
-        request.headers.add(HttpHeaders.authorizationHeader, 'Bearer $apiKey');
-      }
-
-      request.add(utf8.encode(jsonEncode(payload)));
-      final response = await request.close();
-      final body = await response.transform(utf8.decoder).join();
-
+      final body = response.body;
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw GameApiException(
           _extractErrorMessage(body),
@@ -79,7 +68,7 @@ class RemoteScenarioApiClient implements ScenarioApiClient {
       }
 
       return GameSession.fromJson(decoded);
-    } on SocketException {
+    } on http.ClientException {
       throw const GameApiException(
         'Network error. Check API reachability and try again.',
       );

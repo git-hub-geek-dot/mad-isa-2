@@ -50,8 +50,6 @@ class FirebaseBootstrap {
       }
 
       final authService = FirebaseAuthService.instance;
-      await authService.ensureSignedIn();
-
       final historyService = FirestoreGameHistoryService(
         firestore: FirebaseFirestore.instance,
         authService: authService,
