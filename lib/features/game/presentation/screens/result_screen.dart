@@ -1,5 +1,6 @@
 import 'package:dynamic_scenario_game/features/game/domain/models/game_category.dart';
 import 'package:dynamic_scenario_game/features/game/domain/models/game_session.dart';
+import 'package:dynamic_scenario_game/features/game/presentation/widgets/chaos_ui.dart';
 import 'package:flutter/material.dart';
 
 class ResultScreen extends StatefulWidget {
@@ -61,198 +62,223 @@ class _ResultScreenState extends State<ResultScreen> {
     final category = GameCategory.fallbackById(session.categoryId);
     final presentation = _presentationFor(category);
     final theme = Theme.of(context);
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
     final endingTitle = session.endingTitle ?? 'Mission Complete';
     final roastLine =
         session.roastLine ??
         'You reached the ending with confidence that was not supported by the evidence.';
 
-    return Scaffold(
-      body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              presentation.backdropTop,
-              const Color(0xFF251C18),
-              const Color(0xFFF2E2D1),
-            ],
+    return PopScope<void>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop || _isRestarting) {
+          return;
+        }
+
+        widget.onBackHome();
+      },
+      child: Scaffold(
+        body: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                presentation.backdropTop,
+                const Color(0xFF251C18),
+                const Color(0xFFF2E2D1),
+              ],
+            ),
           ),
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              top: -90,
-              right: -60,
-              child: _BackdropOrb(
-                size: 260,
-                colors: [
-                  presentation.accent.withValues(alpha: 0.3),
-                  presentation.accent.withValues(alpha: 0),
-                ],
-              ),
-            ),
-            const Positioned(
-              left: -40,
-              bottom: 90,
-              child: _BackdropOrb(
-                size: 210,
-                colors: [Color(0x55FFF4E6), Color(0x00FFF4E6)],
-              ),
-            ),
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        _ResultPill(
-                          icon: presentation.icon,
-                          label: category.title,
-                        ),
-                        _ResultPill(
-                          icon: widget.usesMockApi
-                              ? Icons.science_rounded
-                              : Icons.auto_awesome_rounded,
-                          label: widget.usesMockApi
-                              ? 'Practice story'
-                              : 'Live story',
-                        ),
-                        _ResultPill(
-                          icon: Icons.flag_rounded,
-                          label: '${session.maxRounds} rounds cleared',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        physics: const BouncingScrollPhysics(),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _ResultHero(
-                              title: endingTitle,
-                              roastLine: roastLine,
-                              presentation: presentation,
-                            ),
-                            const SizedBox(height: 18),
-                            Wrap(
-                              spacing: 12,
-                              runSpacing: 12,
-                              children: [
-                                _OutcomeStat(
-                                  label: 'Rounds',
-                                  value:
-                                      '${session.maxRounds}/${session.maxRounds}',
-                                ),
-                                _OutcomeStat(
-                                  label: 'Category',
-                                  value: presentation.shortLabel,
-                                ),
-                                _OutcomeStat(
-                                  label: 'Ending vibe',
-                                  value: presentation.toneLabel,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 18),
-                            _NarrativeCard(
-                              icon: presentation.icon,
-                              accent: presentation.accent,
-                              title: 'How It Ended',
-                              subtitle:
-                                  'The final scene your choices unlocked.',
-                              body: session.scenario,
-                            ),
-                            const SizedBox(height: 16),
-                            _NarrativeCard(
-                              icon: Icons.history_toggle_off_rounded,
-                              accent: presentation.accent,
-                              title: 'Aftermath',
-                              subtitle:
-                                  'This run is done. A replay will generate a fresh path and a new ending.',
-                              body: presentation.aftermath,
-                            ),
-                            const SizedBox(height: 16),
-                            DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.76),
-                                borderRadius: BorderRadius.circular(26),
-                                border: Border.all(
-                                  color: const Color(
-                                    0xFF1B1A18,
-                                  ).withValues(alpha: 0.08),
-                                ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(18),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Next Move',
-                                      style: theme.textTheme.titleLarge,
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Run it again for a new ending, or go home and pick a completely different disaster lane.',
-                                      style: theme.textTheme.bodyMedium,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    FilledButton(
-                      onPressed: _isRestarting ? null : _handlePlayAgain,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFFF8EDE0),
-                        foregroundColor: const Color(0xFF231E1B),
-                      ),
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 180),
-                        child: _isRestarting
-                            ? const SizedBox(
-                                key: ValueKey('restart-loading'),
-                                height: 22,
-                                width: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.2,
-                                ),
-                              )
-                            : const Text(
-                                'Play Again',
-                                key: ValueKey('restart-label'),
-                              ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    OutlinedButton(
-                      onPressed: _isRestarting ? null : widget.onBackHome,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFF8EDE0),
-                        side: BorderSide(
-                          color: const Color(
-                            0xFFF8EDE0,
-                          ).withValues(alpha: 0.24),
-                        ),
-                      ),
-                      child: const Text('Back Home'),
-                    ),
+          child: Stack(
+            children: [
+              Positioned(
+                top: -90,
+                right: -60,
+                child: _BackdropOrb(
+                  size: 260,
+                  colors: [
+                    presentation.accent.withValues(alpha: 0.3),
+                    presentation.accent.withValues(alpha: 0),
                   ],
                 ),
               ),
-            ),
-          ],
+              const Positioned(
+                left: -40,
+                bottom: 90,
+                child: _BackdropOrb(
+                  size: 210,
+                  colors: [Color(0x55FFF4E6), Color(0x00FFF4E6)],
+                ),
+              ),
+              SafeArea(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    isCompact ? 16 : 20,
+                    18,
+                    isCompact ? 16 : 20,
+                    20,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          _ResultPill(
+                            icon: presentation.icon,
+                            label: category.title,
+                          ),
+                          _ResultPill(
+                            icon: widget.usesMockApi
+                                ? Icons.science_rounded
+                                : Icons.auto_awesome_rounded,
+                            label: widget.usesMockApi
+                                ? 'Practice story'
+                                : 'Live story',
+                          ),
+                          _ResultPill(
+                            icon: Icons.flag_rounded,
+                            label: '${session.maxRounds} rounds cleared',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _ResultHero(
+                                title: endingTitle,
+                                roastLine: roastLine,
+                                presentation: presentation,
+                              ),
+                              const SizedBox(height: 18),
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  _OutcomeStat(
+                                    label: 'Rounds',
+                                    value:
+                                        '${session.maxRounds}/${session.maxRounds}',
+                                  ),
+                                  _OutcomeStat(
+                                    label: 'Category',
+                                    value: presentation.shortLabel,
+                                  ),
+                                  _OutcomeStat(
+                                    label: 'Ending vibe',
+                                    value: presentation.toneLabel,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 18),
+                              _NarrativeCard(
+                                icon: presentation.icon,
+                                accent: presentation.accent,
+                                title: 'How It Ended',
+                                subtitle:
+                                    'The final scene your choices unlocked.',
+                                body: session.scenario,
+                              ),
+                              const SizedBox(height: 16),
+                              _NarrativeCard(
+                                icon: Icons.history_toggle_off_rounded,
+                                accent: presentation.accent,
+                                title: 'Aftermath',
+                                subtitle:
+                                    'This run is done. A replay will generate a fresh path and a new ending.',
+                                body: presentation.aftermath,
+                              ),
+                              const SizedBox(height: 16),
+                              DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.76),
+                                  borderRadius: BorderRadius.circular(
+                                    isCompact ? 24 : 26,
+                                  ),
+                                  border: Border.all(
+                                    color: const Color(
+                                      0xFF1B1A18,
+                                    ).withValues(alpha: 0.08),
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: EdgeInsets.all(isCompact ? 16 : 18),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Next Move',
+                                        style: theme.textTheme.titleLarge,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Run it again for a new ending, or go home and pick a completely different disaster lane.',
+                                        style: theme.textTheme.bodyMedium,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _isRestarting ? null : _handlePlayAgain,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFF8EDE0),
+                            foregroundColor: const Color(0xFF231E1B),
+                          ),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 180),
+                            child: _isRestarting
+                                ? const SizedBox(
+                                    key: ValueKey('restart-loading'),
+                                    height: 22,
+                                    width: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.2,
+                                    ),
+                                  )
+                                : const Text(
+                                    'Play Again',
+                                    key: ValueKey('restart-label'),
+                                  ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: _isRestarting ? null : widget.onBackHome,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFF8EDE0),
+                            side: BorderSide(
+                              color: const Color(
+                                0xFFF8EDE0,
+                              ).withValues(alpha: 0.24),
+                            ),
+                          ),
+                          child: const Text('Back Home'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -267,18 +293,7 @@ class _BackdropOrb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: SizedBox(
-        height: size,
-        width: size,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(colors: colors),
-          ),
-        ),
-      ),
-    );
+    return ChaosBackdropOrb(size: size, colors: colors);
   }
 }
 
@@ -290,28 +305,22 @@ class _ResultPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
+
+    return ChaosStatusPill(
+      icon: icon,
+      label: label,
+      backgroundColor: Colors.white.withValues(alpha: 0.12),
+      foregroundColor: const Color(0xFFF8EDE0),
+      borderColor: Colors.white.withValues(alpha: 0.18),
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompact ? 12 : 14,
+        vertical: isCompact ? 7 : 8,
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: const Color(0xFFF8EDE0)),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFFF8EDE0),
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
+      iconSize: isCompact ? 14 : 16,
+      textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+        color: const Color(0xFFF8EDE0),
+        fontWeight: FontWeight.w700,
       ),
     );
   }
@@ -331,6 +340,7 @@ class _ResultHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -339,7 +349,7 @@ class _ResultHero extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [const Color(0xFF171312), presentation.accent],
         ),
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(isCompact ? 26 : 30),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.18),
@@ -349,7 +359,7 @@ class _ResultHero extends StatelessWidget {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(22),
+        padding: EdgeInsets.all(isCompact ? 18 : 22),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -359,18 +369,18 @@ class _ResultHero extends StatelessWidget {
                 DecoratedBox(
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(isCompact ? 18 : 20),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.all(12),
+                    padding: EdgeInsets.all(isCompact ? 10 : 12),
                     child: Icon(
                       presentation.icon,
                       color: const Color(0xFFF8EDE0),
-                      size: 24,
+                      size: isCompact ? 22 : 24,
                     ),
                   ),
                 ),
-                const SizedBox(width: 14),
+                SizedBox(width: isCompact ? 12 : 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -390,7 +400,8 @@ class _ResultHero extends StatelessWidget {
                         title,
                         style: theme.textTheme.displaySmall?.copyWith(
                           color: const Color(0xFFF8EDE0),
-                          fontSize: 34,
+                          fontSize: isCompact ? 30 : 34,
+                          height: isCompact ? 1.04 : null,
                         ),
                       ),
                     ],
@@ -403,7 +414,7 @@ class _ResultHero extends StatelessWidget {
               roastLine,
               style: theme.textTheme.headlineSmall?.copyWith(
                 color: const Color(0xFFF8EDE0),
-                fontSize: 24,
+                fontSize: isCompact ? 22 : 24,
                 height: 1.12,
               ),
             ),
@@ -457,12 +468,14 @@ class _OutcomeStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
+
     return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 120, maxWidth: 180),
+      constraints: BoxConstraints(minWidth: 0, maxWidth: isCompact ? 160 : 180),
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.78),
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(isCompact ? 22 : 24),
           border: Border.all(
             color: const Color(0xFF1B1A18).withValues(alpha: 0.08),
           ),
@@ -507,11 +520,12 @@ class _NarrativeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
 
     return DecoratedBox(
       decoration: BoxDecoration(
         color: const Color(0xFFF8EDE0),
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(isCompact ? 26 : 30),
         border: Border.all(color: accent.withValues(alpha: 0.16)),
         boxShadow: [
           BoxShadow(
@@ -522,7 +536,7 @@ class _NarrativeCard extends StatelessWidget {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(isCompact ? 18 : 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -532,14 +546,18 @@ class _NarrativeCard extends StatelessWidget {
                 DecoratedBox(
                   decoration: BoxDecoration(
                     color: accent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(isCompact ? 16 : 18),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Icon(icon, color: const Color(0xFF1B1A18)),
+                    padding: EdgeInsets.all(isCompact ? 10 : 12),
+                    child: Icon(
+                      icon,
+                      color: const Color(0xFF1B1A18),
+                      size: isCompact ? 22 : 24,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 14),
+                SizedBox(width: isCompact ? 12 : 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

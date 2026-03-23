@@ -2,7 +2,9 @@ import 'package:dynamic_scenario_game/core/firebase/firebase_bootstrap.dart';
 import 'package:dynamic_scenario_game/features/auth/data/firebase_auth_service.dart';
 import 'package:dynamic_scenario_game/features/game/domain/models/game_category.dart';
 import 'package:dynamic_scenario_game/features/game/presentation/controllers/game_controller.dart';
+import 'package:dynamic_scenario_game/features/game/presentation/widgets/chaos_ui.dart';
 import 'package:dynamic_scenario_game/features/history/domain/models/game_history_entry.dart';
+import 'package:dynamic_scenario_game/features/history/presentation/game_notes_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuthException;
 import 'package:flutter/material.dart';
 
@@ -45,7 +47,7 @@ class _HomeScreenState extends State<HomeScreen>
     super.dispose();
   }
 
-  Future<void> _continueAsGuest(FirebaseAuthService authService) async {
+  Future<void> _openSignUpSheet(FirebaseAuthService authService) async {
     if (_isAuthBusy) {
       return;
     }
@@ -55,18 +57,34 @@ class _HomeScreenState extends State<HomeScreen>
     });
 
     try {
-      await authService.signInAsGuest();
-      if (!mounted) {
+      final created = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) {
+          return _SignUpSheet(
+            initialSignInMode: true,
+            onSignUp: ({required name, required email, required password}) {
+              return authService.signUp(
+                name: name,
+                email: email,
+                password: password,
+              );
+            },
+            onSignIn: ({required email, required password}) {
+              return authService.signIn(email: email, password: password);
+            },
+          );
+        },
+      );
+
+      if (!mounted || created != true) {
         return;
       }
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Continuing as guest.')));
-    } on FirebaseAuthException catch (error) {
-      _showMessage(_friendlyAuthError(error));
-    } catch (_) {
-      _showMessage('Could not continue as guest. Try again.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Authentication successful.')),
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -76,45 +94,83 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  Future<void> _openSignUpSheet(FirebaseAuthService authService) async {
-    if (_isAuthBusy) {
-      return;
-    }
-
-    final created = await showModalBottomSheet<bool>(
+  Future<void> _openHowItWorksSheet({required bool savesProgress}) async {
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return _SignUpSheet(
-          onSubmit: ({required name, required email, required password}) {
-            return authService.signUp(
-              name: name,
-              email: email,
-              password: password,
-            );
-          },
-        );
+        return _HowItWorksSheet(savesProgress: savesProgress);
       },
-    );
-
-    if (!mounted || created != true) {
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Account created successfully.')),
     );
   }
 
-  void _showMessage(String message) {
-    if (!mounted) {
+  Future<void> _signOut(FirebaseAuthService authService) async {
+    if (_isAuthBusy) {
       return;
     }
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    setState(() {
+      _isAuthBusy = true;
+    });
+
+    try {
+      await authService.signOut();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Signed out successfully.')));
+    } on FirebaseAuthException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyAuthError(error))));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not sign out.')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAuthBusy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _openNotesForSession(String sessionId) async {
+    final historyService = widget.firebaseBootstrap.historyService;
+    if (historyService == null) {
+      return;
+    }
+
+    try {
+      final run = await historyService.getGameRunDetails(sessionId);
+      if (!mounted || run == null) {
+        return;
+      }
+
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              GameNotesScreen(gameRun: run, historyService: historyService),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open notes for this run.')),
+      );
+    }
   }
 
   Widget _buildEntrance({
@@ -153,12 +209,11 @@ class _HomeScreenState extends State<HomeScreen>
         final isSignedIn = authService?.isSignedIn ?? false;
         final isAnonymous = authService?.isAnonymous ?? false;
         final savesProgress = widget.firebaseBootstrap.isReady && isSignedIn;
-        final showGuestChoice = authService != null && !isSignedIn;
-        final showUpgradeChoice = authService != null && isAnonymous;
         final showHistory = historyService != null && isSignedIn;
         final identityIcon = isSignedIn && !isAnonymous
             ? Icons.waving_hand_rounded
             : Icons.person_rounded;
+        final isCompact = MediaQuery.sizeOf(context).width < 380;
 
         return Scaffold(
           body: DecoratedBox(
@@ -193,7 +248,12 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
                 SafeArea(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                    padding: EdgeInsets.fromLTRB(
+                      isCompact ? 16 : 20,
+                      16,
+                      isCompact ? 16 : 20,
+                      18,
+                    ),
                     child: Column(
                       children: [
                         Expanded(
@@ -206,6 +266,14 @@ class _HomeScreenState extends State<HomeScreen>
                                 child: _InfoBadge(
                                   icon: identityIcon,
                                   label: identityLabel,
+                                  isGuest: !isSignedIn,
+                                  isLoginBusy: _isAuthBusy,
+                                  onLoginTap: !isSignedIn && authService != null
+                                      ? () => _openSignUpSheet(authService)
+                                      : null,
+                                  onLogoutTap: isSignedIn && authService != null
+                                      ? () => _signOut(authService)
+                                      : null,
                                 ),
                               ),
                               const SizedBox(height: 18),
@@ -254,54 +322,6 @@ class _HomeScreenState extends State<HomeScreen>
                                   ],
                                 ),
                               ),
-                              _buildEntrance(
-                                start: 0.3,
-                                end: 0.78,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const SizedBox(height: 4),
-                                    _ProgressStatusCard(
-                                      firebaseBootstrap:
-                                          widget.firebaseBootstrap,
-                                      isSignedIn: isSignedIn,
-                                      isAnonymous: isAnonymous,
-                                    ),
-                                    if (showGuestChoice) ...[
-                                      const SizedBox(height: 18),
-                                      _AccountActionCard(
-                                        title: 'Choose How You Want To Play',
-                                        body:
-                                            'Jump in as a guest for zero friction, or create an account if you want your endings tied to a real profile.',
-                                        primaryLabel: 'Continue As Guest',
-                                        secondaryLabel: 'Sign Up',
-                                        onPrimaryTap: _isAuthBusy
-                                            ? null
-                                            : () =>
-                                                  _continueAsGuest(authService),
-                                        onSecondaryTap: _isAuthBusy
-                                            ? null
-                                            : () =>
-                                                  _openSignUpSheet(authService),
-                                        isBusy: _isAuthBusy,
-                                      ),
-                                    ] else if (showUpgradeChoice) ...[
-                                      const SizedBox(height: 18),
-                                      _AccountActionCard(
-                                        title: 'Want A Proper Account?',
-                                        body:
-                                            'You are playing as a guest right now. Create an account any time and keep your progress linked to it.',
-                                        primaryLabel: 'Sign Up',
-                                        onPrimaryTap: _isAuthBusy
-                                            ? null
-                                            : () =>
-                                                  _openSignUpSheet(authService),
-                                        isBusy: _isAuthBusy,
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
                               if (showHistory)
                                 _buildEntrance(
                                   start: 0.46,
@@ -312,7 +332,7 @@ class _HomeScreenState extends State<HomeScreen>
                                     children: [
                                       const SizedBox(height: 24),
                                       const _SectionIntro(
-                                        title: 'Recent Endings',
+                                        title: 'Recent History',
                                         subtitle:
                                             'Your latest completed runs appear here automatically.',
                                       ),
@@ -320,6 +340,7 @@ class _HomeScreenState extends State<HomeScreen>
                                       _HistorySection(
                                         historyStream: historyService
                                             .watchRecentRuns(),
+                                        onOpenNotes: _openNotesForSession,
                                       ),
                                     ],
                                   ),
@@ -331,36 +352,11 @@ class _HomeScreenState extends State<HomeScreen>
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     const SizedBox(height: 24),
-                                    const _SectionIntro(
-                                      title: 'How It Works',
-                                      subtitle:
-                                          'Every run is short, fast, and built to escalate with each choice.',
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Wrap(
-                                      spacing: 12,
-                                      runSpacing: 12,
-                                      children: [
-                                        const _HowItWorksCard(
-                                          icon: Icons.explore_rounded,
-                                          title: 'Pick A Lane',
-                                          body:
-                                              'Start with relationship drama, friendship fallout, or everyday nonsense.',
-                                        ),
-                                        const _HowItWorksCard(
-                                          icon: Icons.touch_app_rounded,
-                                          title: 'Choose Fast',
-                                          body:
-                                              'Each round gives you three bad ideas dressed up as decisions.',
-                                        ),
-                                        _HowItWorksCard(
-                                          icon: Icons.emoji_events_rounded,
-                                          title: 'Own The Ending',
-                                          body: savesProgress
-                                              ? 'Finished runs are saved automatically so you can show your best disasters.'
-                                              : 'Every run still reaches a proper ending, even if you are just testing without an account.',
-                                        ),
-                                      ],
+                                    _HowItWorksPreviewCard(
+                                      savesProgress: savesProgress,
+                                      onTap: () => _openHowItWorksSheet(
+                                        savesProgress: savesProgress,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -373,21 +369,24 @@ class _HomeScreenState extends State<HomeScreen>
                           start: 0.66,
                           end: 1,
                           beginOffset: const Offset(0, 0.035),
-                          child: FilledButton(
-                            onPressed: widget.controller.isBusy
-                                ? null
-                                : () => widget.controller.startGame(
-                                    _selectedCategory,
-                                  ),
-                            child: widget.controller.isBusy
-                                ? const SizedBox(
-                                    height: 22,
-                                    width: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: FilledButton(
+                              onPressed: widget.controller.isBusy
+                                  ? null
+                                  : () => widget.controller.startGame(
+                                      _selectedCategory,
                                     ),
-                                  )
-                                : Text('Play ${_selectedCategory.title}'),
+                              child: widget.controller.isBusy
+                                  ? const SizedBox(
+                                      height: 22,
+                                      width: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : Text('Play ${_selectedCategory.title}'),
+                            ),
                           ),
                         ),
                       ],
@@ -411,18 +410,7 @@ class _BackdropOrb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: SizedBox(
-        height: size,
-        width: size,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(colors: colors),
-          ),
-        ),
-      ),
-    );
+    return ChaosBackdropOrb(size: size, colors: colors);
   }
 }
 
@@ -436,6 +424,7 @@ class _HeroPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final presentation = _presentationFor(category);
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -444,7 +433,7 @@ class _HeroPanel extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [const Color(0xFF171312), presentation.accent],
         ),
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(isCompact ? 26 : 30),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF1B1A18).withValues(alpha: 0.14),
@@ -454,7 +443,7 @@ class _HeroPanel extends StatelessWidget {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(22),
+        padding: EdgeInsets.all(isCompact ? 18 : 22),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -464,18 +453,18 @@ class _HeroPanel extends StatelessWidget {
                 DecoratedBox(
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(isCompact ? 16 : 18),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.all(12),
+                    padding: EdgeInsets.all(isCompact ? 10 : 12),
                     child: Icon(
                       presentation.icon,
                       color: const Color(0xFFF6EAD7),
-                      size: 24,
+                      size: isCompact ? 22 : 24,
                     ),
                   ),
                 ),
-                const SizedBox(width: 14),
+                SizedBox(width: isCompact ? 12 : 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -495,7 +484,8 @@ class _HeroPanel extends StatelessWidget {
                         'Make one bad decision at a time.',
                         style: theme.textTheme.displaySmall?.copyWith(
                           color: const Color(0xFFF6EAD7),
-                          fontSize: 34,
+                          fontSize: isCompact ? 30 : 34,
+                          height: isCompact ? 1.05 : null,
                         ),
                       ),
                     ],
@@ -517,13 +507,13 @@ class _HeroPanel extends StatelessWidget {
                 key: ValueKey(category.id),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(isCompact ? 22 : 24),
                   border: Border.all(
                     color: Colors.white.withValues(alpha: 0.12),
                   ),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.all(isCompact ? 14 : 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -531,7 +521,7 @@ class _HeroPanel extends StatelessWidget {
                         'Tonight\'s mess: ${category.title}',
                         style: theme.textTheme.titleLarge?.copyWith(
                           color: const Color(0xFFF6EAD7),
-                          fontSize: 18,
+                          fontSize: isCompact ? 17 : 18,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -550,8 +540,8 @@ class _HeroPanel extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Wrap(
-              spacing: 12,
-              runSpacing: 12,
+              spacing: isCompact ? 10 : 12,
+              runSpacing: isCompact ? 10 : 12,
               children: [
                 const _HeroStat(value: '4', label: 'rounds'),
                 const _HeroStat(value: '3', label: 'choices each'),
@@ -576,21 +566,27 @@ class _HeroStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: EdgeInsets.symmetric(
+          horizontal: isCompact ? 12 : 14,
+          vertical: isCompact ? 10 : 12,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               value,
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(color: const Color(0xFFF6EAD7)),
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: const Color(0xFFF6EAD7),
+                fontSize: isCompact ? 18 : null,
+              ),
             ),
             Text(
               label,
@@ -605,95 +601,49 @@ class _HeroStat extends StatelessWidget {
   }
 }
 
-class _ProgressStatusCard extends StatelessWidget {
-  const _ProgressStatusCard({
-    required this.firebaseBootstrap,
-    required this.isSignedIn,
-    required this.isAnonymous,
+class _HowItWorksPreviewCard extends StatelessWidget {
+  const _HowItWorksPreviewCard({
+    required this.savesProgress,
+    required this.onTap,
   });
 
-  final FirebaseBootstrapResult firebaseBootstrap;
-  final bool isSignedIn;
-  final bool isAnonymous;
+  final bool savesProgress;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final isReady = firebaseBootstrap.isReady;
-    final isPositive = isReady && isSignedIn;
-    final foreground = isPositive
-        ? const Color(0xFFF6EAD7)
-        : const Color(0xFF1B1A18);
-    final background = isPositive
-        ? const LinearGradient(colors: [Color(0xFF204938), Color(0xFF2A6550)])
-        : const LinearGradient(colors: [Color(0xFFFFF5EA), Color(0xFFF0E1CF)]);
-
-    final title = isReady
-        ? isSignedIn
-              ? isAnonymous
-                    ? 'Playing as guest'
-                    : 'Account connected'
-              : 'Choose how you want to play'
-        : 'Guest mode is active';
-
-    final body = isReady
-        ? isSignedIn
-              ? isAnonymous
-                    ? 'Your progress now saves to this guest profile. You can sign up later without losing that progress.'
-                    : 'Your progress is attached to your account and recent endings will appear below.'
-              : 'You can play immediately either way. Use guest mode for speed, or sign up if you want a named account.'
-        : firebaseBootstrap.errorMessage ??
-              'You can still play the full experience, but recent runs will not be saved on this device.';
-
-    final icon = isReady
-        ? isSignedIn
-              ? isAnonymous
-                    ? Icons.person_outline_rounded
-                    : Icons.verified_user_rounded
-              : Icons.badge_rounded
-        : Icons.person_outline_rounded;
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: background,
-        borderRadius: BorderRadius.circular(26),
+        color: Colors.white.withValues(alpha: 0.78),
+        borderRadius: BorderRadius.circular(isCompact ? 24 : 26),
+        border: Border.all(
+          color: const Color(0xFF1B1A18).withValues(alpha: 0.08),
+        ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Row(
+        padding: EdgeInsets.all(isCompact ? 16 : 18),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: isPositive
-                    ? Colors.white.withValues(alpha: 0.12)
-                    : const Color(0xFF1B1A18).withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Icon(icon, color: foreground),
-              ),
+            Text('Quick Start', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            Text(
+              savesProgress
+                  ? 'Pick a category, make a few bad choices, and your ending gets saved automatically.'
+                  : 'Pick a category, make a few bad choices, and the app will build a fresh ending for this run.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF4E3C2D)),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: foreground,
-                      fontSize: 18,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    body,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: foreground.withValues(alpha: 0.88),
-                    ),
-                  ),
-                ],
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onTap,
+                icon: const Icon(Icons.menu_book_rounded),
+                label: const Text('See How It Works'),
               ),
             ),
           ],
@@ -703,66 +653,72 @@ class _ProgressStatusCard extends StatelessWidget {
   }
 }
 
-class _AccountActionCard extends StatelessWidget {
-  const _AccountActionCard({
-    required this.title,
-    required this.body,
-    required this.primaryLabel,
-    required this.onPrimaryTap,
-    this.secondaryLabel,
-    this.onSecondaryTap,
-    this.isBusy = false,
-  });
+class _HowItWorksSheet extends StatelessWidget {
+  const _HowItWorksSheet({required this.savesProgress});
 
-  final String title;
-  final String body;
-  final String primaryLabel;
-  final VoidCallback? onPrimaryTap;
-  final String? secondaryLabel;
-  final VoidCallback? onSecondaryTap;
-  final bool isBusy;
+  final bool savesProgress;
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
+
     return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(
-          color: const Color(0xFF1B1A18).withValues(alpha: 0.08),
-        ),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF8EDE0),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Text(body, style: Theme.of(context).textTheme.bodyMedium),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                FilledButton(
-                  onPressed: onPrimaryTap,
-                  child: isBusy
-                      ? const SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(primaryLabel),
-                ),
-                if (secondaryLabel != null)
-                  OutlinedButton(
-                    onPressed: onSecondaryTap,
-                    child: Text(secondaryLabel!),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            isCompact ? 16 : 20,
+            18,
+            isCompact ? 16 : 20,
+            22,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  height: 5,
+                  width: 48,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1B1A18).withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(999),
                   ),
-              ],
-            ),
-          ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              const _SectionIntro(
+                title: 'How It Works',
+                subtitle:
+                    'Everything you need is here, without stretching the home screen into a long landing page.',
+              ),
+              const SizedBox(height: 14),
+              const _HowItWorksCard(
+                icon: Icons.explore_rounded,
+                title: 'Pick A Lane',
+                body:
+                    'Start with relationship drama, friendship fallout, or everyday nonsense.',
+              ),
+              const SizedBox(height: 12),
+              const _HowItWorksCard(
+                icon: Icons.touch_app_rounded,
+                title: 'Choose Fast',
+                body:
+                    'Each round gives you three bad ideas dressed up as decisions.',
+              ),
+              const SizedBox(height: 12),
+              _HowItWorksCard(
+                icon: Icons.emoji_events_rounded,
+                title: 'Own The Ending',
+                body: savesProgress
+                    ? 'Finished runs are saved automatically so you can show your best disasters.'
+                    : 'Every run still reaches a proper ending, even if you are just testing without an account.',
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -832,34 +788,32 @@ class _SectionIntro extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: Theme.of(
-            context,
-          ).textTheme.headlineSmall?.copyWith(fontSize: 24),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          subtitle,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF4E3C2D)),
-        ),
-      ],
+    return ChaosSectionHeader(
+      title: title,
+      subtitle: subtitle,
+      titleStyle: Theme.of(
+        context,
+      ).textTheme.headlineSmall?.copyWith(fontSize: 24),
+      subtitleStyle: Theme.of(
+        context,
+      ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF4E3C2D)),
     );
   }
 }
 
 class _HistorySection extends StatelessWidget {
-  const _HistorySection({required this.historyStream});
+  const _HistorySection({
+    required this.historyStream,
+    required this.onOpenNotes,
+  });
 
   final Stream<List<GameHistoryEntry>> historyStream;
+  final Future<void> Function(String sessionId) onOpenNotes;
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
+
     return StreamBuilder<List<GameHistoryEntry>>(
       stream: historyStream,
       builder: (context, snapshot) {
@@ -878,7 +832,7 @@ class _HistorySection extends StatelessWidget {
               ),
             ),
             child: Padding(
-              padding: const EdgeInsets.all(18),
+              padding: EdgeInsets.all(isCompact ? 16 : 18),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -892,7 +846,7 @@ class _HistorySection extends StatelessWidget {
                       child: Icon(Icons.history_rounded),
                     ),
                   ),
-                  const SizedBox(width: 14),
+                  SizedBox(width: isCompact ? 12 : 14),
                   const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -924,6 +878,7 @@ class _HistorySection extends StatelessWidget {
               _HistoryRunCard(
                 item: item,
                 completedAtLabel: _formatCompletedAt(item.completedAt),
+                onOpenNotes: () => onOpenNotes(item.id),
               ),
               const SizedBox(height: 12),
             ],
@@ -944,14 +899,20 @@ class _HistorySection extends StatelessWidget {
 }
 
 class _HistoryRunCard extends StatelessWidget {
-  const _HistoryRunCard({required this.item, required this.completedAtLabel});
+  const _HistoryRunCard({
+    required this.item,
+    required this.completedAtLabel,
+    required this.onOpenNotes,
+  });
 
   final GameHistoryEntry item;
   final String completedAtLabel;
+  final VoidCallback onOpenNotes;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
     final category = GameCategory.presets.firstWhere(
       (candidate) => candidate.title == item.categoryTitle,
       orElse: () => GameCategory.presets.first,
@@ -992,14 +953,15 @@ class _HistoryRunCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(18),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.all(12),
+                    padding: EdgeInsets.all(isCompact ? 10 : 12),
                     child: Icon(
                       presentation.icon,
                       color: const Color(0xFF1B1A18),
+                      size: isCompact ? 22 : 24,
                     ),
                   ),
                 ),
-                const SizedBox(width: 14),
+                SizedBox(width: isCompact ? 12 : 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1066,6 +1028,15 @@ class _HistoryRunCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium,
                     ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: OutlinedButton.icon(
+                        onPressed: onOpenNotes,
+                        icon: const Icon(Icons.note_alt_rounded),
+                        label: const Text('Add Notes'),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1078,34 +1049,71 @@ class _HistoryRunCard extends StatelessWidget {
 }
 
 class _InfoBadge extends StatelessWidget {
-  const _InfoBadge({required this.icon, required this.label});
+  const _InfoBadge({
+    required this.icon,
+    required this.label,
+    this.onLoginTap,
+    this.onLogoutTap,
+    this.isGuest = false,
+    this.isLoginBusy = false,
+  });
 
   final IconData icon;
   final String label;
+  final VoidCallback? onLoginTap;
+  final VoidCallback? onLogoutTap;
+  final bool isGuest;
+  final bool isLoginBusy;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.62),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: const Color(0xFF1B1A18)),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+    final displayLabel = isGuest ? 'You are playing as guest' : label;
+    
+    return ChaosStatusPill(
+      icon: icon,
+      label: displayLabel,
+      backgroundColor: Colors.white.withValues(alpha: 0.62),
+      foregroundColor: const Color(0xFF1B1A18),
+      textStyle: Theme.of(
+        context,
+      ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+      actionButton: isGuest
+          ? FilledButton(
+              onPressed: isLoginBusy ? null : onLoginTap,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF1B1A18),
+                foregroundColor: Colors.white,
+                minimumSize: const Size(84, 36),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+              child: isLoginBusy
+                  ? const SizedBox(
+                      height: 14,
+                      width: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Login'),
+            )
+          : FilledButton(
+              onPressed: isLoginBusy ? null : onLogoutTap,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF1B1A18),
+                foregroundColor: Colors.white,
+                minimumSize: const Size(90, 36),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+              child: isLoginBusy
+                  ? const SizedBox(
+                      height: 14,
+                      width: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Sign out'),
             ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -1125,6 +1133,7 @@ class _CategoryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final presentation = _presentationFor(category);
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
     final foreground = isSelected
         ? const Color(0xFFF6EAD7)
         : const Color(0xFF1B1A18);
@@ -1136,7 +1145,7 @@ class _CategoryCard extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(isCompact ? 24 : 28),
           onTap: onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 220),
@@ -1149,7 +1158,7 @@ class _CategoryCard extends StatelessWidget {
                   : const LinearGradient(
                       colors: [Color(0xFFFFFBF6), Color(0xFFF2E4D2)],
                     ),
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(isCompact ? 24 : 28),
               border: Border.all(
                 color: isSelected
                     ? Colors.white.withValues(alpha: 0.14)
@@ -1164,7 +1173,7 @@ class _CategoryCard extends StatelessWidget {
               ],
             ),
             child: Padding(
-              padding: const EdgeInsets.all(18),
+              padding: EdgeInsets.all(isCompact ? 16 : 18),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1173,18 +1182,18 @@ class _CategoryCard extends StatelessWidget {
                       color: isSelected
                           ? Colors.white.withValues(alpha: 0.14)
                           : presentation.accent.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(18),
+                      borderRadius: BorderRadius.circular(isCompact ? 16 : 18),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.all(12),
+                      padding: EdgeInsets.all(isCompact ? 10 : 12),
                       child: Icon(
                         presentation.icon,
                         color: foreground,
-                        size: 22,
+                        size: isCompact ? 20 : 22,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 14),
+                  SizedBox(width: isCompact ? 12 : 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1287,14 +1296,26 @@ class _CategoryPresentation {
 }
 
 class _SignUpSheet extends StatefulWidget {
-  const _SignUpSheet({required this.onSubmit});
+  const _SignUpSheet({
+    required this.onSignUp,
+    required this.onSignIn,
+    this.initialSignInMode = false,
+  });
 
   final Future<void> Function({
     required String name,
     required String email,
     required String password,
   })
-  onSubmit;
+  onSignUp;
+
+  final Future<void> Function({
+    required String email,
+    required String password,
+  })
+  onSignIn;
+
+  final bool initialSignInMode;
 
   @override
   State<_SignUpSheet> createState() => _SignUpSheetState();
@@ -1308,6 +1329,14 @@ class _SignUpSheetState extends State<_SignUpSheet> {
   bool _isSubmitting = false;
   bool _obscurePassword = true;
   String? _errorMessage;
+  late bool _isSignInMode;
+  bool _didAttemptSubmit = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _isSignInMode = widget.initialSignInMode;
+  }
 
   @override
   void dispose() {
@@ -1319,6 +1348,10 @@ class _SignUpSheetState extends State<_SignUpSheet> {
 
   Future<void> _submit() async {
     final form = _formKey.currentState;
+    setState(() {
+      _didAttemptSubmit = true;
+    });
+
     if (form == null || !form.validate() || _isSubmitting) {
       return;
     }
@@ -1329,11 +1362,18 @@ class _SignUpSheetState extends State<_SignUpSheet> {
     });
 
     try {
-      await widget.onSubmit(
-        name: _nameController.text,
-        email: _emailController.text,
-        password: _passwordController.text,
-      );
+      if (_isSignInMode) {
+        await widget.onSignIn(
+          email: _emailController.text,
+          password: _passwordController.text,
+        );
+      } else {
+        await widget.onSignUp(
+          name: _nameController.text,
+          email: _emailController.text,
+          password: _passwordController.text,
+        );
+      }
       if (!mounted) {
         return;
       }
@@ -1360,6 +1400,7 @@ class _SignUpSheetState extends State<_SignUpSheet> {
   Widget build(BuildContext context) {
     final viewInsets = MediaQuery.of(context).viewInsets;
     final theme = Theme.of(context);
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
 
     return Padding(
       padding: EdgeInsets.only(bottom: viewInsets.bottom),
@@ -1371,7 +1412,12 @@ class _SignUpSheetState extends State<_SignUpSheet> {
         child: SafeArea(
           top: false,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            padding: EdgeInsets.fromLTRB(
+              isCompact ? 16 : 20,
+              18,
+              isCompact ? 16 : 20,
+              22,
+            ),
             child: Form(
               key: _formKey,
               child: Column(
@@ -1414,60 +1460,73 @@ class _SignUpSheetState extends State<_SignUpSheet> {
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    'Create an account',
+                    _isSignInMode ? 'Sign in' : 'Create an account',
                     style: theme.textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Add your details if you want a named profile. If you are already playing as a guest, this upgrades that guest profile instead of replacing it.',
+                    _isSignInMode
+                        ? 'Sign in with your existing account to continue where you left off.'
+                        : 'Add your details if you want a named profile. If you are already playing as a guest, this upgrades that guest profile instead of replacing it.',
                     style: theme.textTheme.bodyMedium,
                   ),
                   const SizedBox(height: 16),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.54),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: const Color(0xFF1B1A18).withValues(alpha: 0.08),
+                  if (!_isSignInMode) ...[
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.54),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: const Color(0xFF1B1A18).withValues(alpha: 0.08),
+                        ),
                       ),
-                    ),
-                    child: const Padding(
-                      padding: EdgeInsets.all(14),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(Icons.security_rounded, size: 20),
-                          SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'You can keep playing as Anonymous and sign up later. Creating an account is optional.',
+                      child: const Padding(
+                        padding: EdgeInsets.all(14),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.security_rounded, size: 20),
+                            SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'You can keep playing as Anonymous and sign up later. Creating an account is optional.',
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _nameController,
-                    textInputAction: TextInputAction.next,
-                    textCapitalization: TextCapitalization.words,
-                    autofillHints: const [AutofillHints.name],
-                    decoration: const InputDecoration(labelText: 'Name'),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Enter your name.';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _nameController,
+                      textInputAction: TextInputAction.next,
+                      textCapitalization: TextCapitalization.words,
+                      autofillHints: const [AutofillHints.name],
+                      autovalidateMode: _didAttemptSubmit
+                          ? AutovalidateMode.onUserInteraction
+                          : AutovalidateMode.disabled,
+                      decoration: const InputDecoration(labelText: 'Name'),
+                      validator: (value) {
+                        if (_isSignInMode) {
+                          return null;
+                        }
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Enter your name.';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   TextFormField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
                     autofillHints: const [AutofillHints.email],
                     autocorrect: false,
+                    autovalidateMode: _didAttemptSubmit
+                        ? AutovalidateMode.onUserInteraction
+                        : AutovalidateMode.disabled,
                     decoration: const InputDecoration(labelText: 'Email'),
                     validator: (value) {
                       final text = value?.trim() ?? '';
@@ -1485,6 +1544,9 @@ class _SignUpSheetState extends State<_SignUpSheet> {
                     autofillHints: const [AutofillHints.newPassword],
                     autocorrect: false,
                     enableSuggestions: false,
+                    autovalidateMode: _didAttemptSubmit
+                        ? AutovalidateMode.onUserInteraction
+                        : AutovalidateMode.disabled,
                     decoration: InputDecoration(
                       labelText: 'Password',
                       suffixIcon: IconButton(
@@ -1513,15 +1575,34 @@ class _SignUpSheetState extends State<_SignUpSheet> {
                     _SheetError(message: _errorMessage!),
                   ],
                   const SizedBox(height: 18),
-                  FilledButton(
-                    onPressed: _isSubmitting ? null : _submit,
-                    child: _isSubmitting
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Create account'),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: _isSubmitting ? null : _submit,
+                      child: _isSubmitting
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(_isSignInMode ? 'Sign in' : 'Create account'),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextButton(
+                    onPressed: _isSubmitting
+                        ? null
+                        : () {
+                            setState(() {
+                              _isSignInMode = !_isSignInMode;
+                              _errorMessage = null;
+                            });
+                          },
+                    child: Text(
+                      _isSignInMode
+                          ? 'Need a new account? Create one'
+                          : 'Already have an account? Sign in',
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(

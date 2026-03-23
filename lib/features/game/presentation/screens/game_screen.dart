@@ -1,5 +1,6 @@
 import 'package:dynamic_scenario_game/features/game/domain/models/game_category.dart';
 import 'package:dynamic_scenario_game/features/game/presentation/controllers/game_controller.dart';
+import 'package:dynamic_scenario_game/features/game/presentation/widgets/chaos_ui.dart';
 import 'package:flutter/material.dart';
 
 class GameScreen extends StatelessWidget {
@@ -7,10 +8,12 @@ class GameScreen extends StatelessWidget {
     super.key,
     required this.controller,
     required this.usesMockApi,
+    required this.onCloseRequested,
   });
 
   final GameController controller;
   final bool usesMockApi;
+  final Future<void> Function() onCloseRequested;
 
   @override
   Widget build(BuildContext context) {
@@ -20,137 +23,162 @@ class GameScreen extends StatelessWidget {
         : controller.lastCategory ?? GameCategory.presets.first;
     final presentation = _presentationFor(category);
     final theme = Theme.of(context);
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
 
-    return Scaffold(
-      body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              presentation.backdropTop,
-              const Color(0xFF251C18),
-              const Color(0xFFF1E2D1),
-            ],
+    return PopScope<void>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          return;
+        }
+
+        onCloseRequested();
+      },
+      child: Scaffold(
+        body: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                presentation.backdropTop,
+                const Color(0xFF251C18),
+                const Color(0xFFF1E2D1),
+              ],
+            ),
           ),
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              top: -90,
-              right: -50,
-              child: _BackdropOrb(
-                size: 250,
-                colors: [
-                  presentation.accent.withValues(alpha: 0.28),
-                  presentation.accent.withValues(alpha: 0),
-                ],
-              ),
-            ),
-            const Positioned(
-              left: -30,
-              bottom: 80,
-              child: _BackdropOrb(
-                size: 190,
-                colors: [Color(0x66FFF4E6), Color(0x00FFF4E6)],
-              ),
-            ),
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _ScreenHeader(
-                      category: category,
-                      presentation: presentation,
-                      usesMockApi: usesMockApi,
-                      onClose: controller.isBusy ? null : controller.backToHome,
-                    ),
-                    const SizedBox(height: 16),
-                    _RoundHero(
-                      category: category,
-                      presentation: presentation,
-                      session: session,
-                    ),
-                    const SizedBox(height: 18),
-                    Expanded(
-                      child: session == null
-                          ? const Center(child: CircularProgressIndicator())
-                          : AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 260),
-                              switchInCurve: Curves.easeOutCubic,
-                              switchOutCurve: Curves.easeInCubic,
-                              child: SingleChildScrollView(
-                                key: ValueKey(
-                                  '${session.sessionId}-${session.round}',
-                                ),
-                                physics: const BouncingScrollPhysics(),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (controller.errorMessage != null) ...[
-                                      _InlineError(
-                                        message: controller.errorMessage!,
-                                        onDismiss: controller.clearError,
-                                      ),
-                                      const SizedBox(height: 16),
-                                    ],
-                                    _ScenarioCard(
-                                      scenario: session.scenario,
-                                      presentation: presentation,
-                                    ),
-                                    const SizedBox(height: 20),
-                                    _SectionLead(
-                                      title: 'Pick Your Move',
-                                      subtitle: controller.isBusy
-                                          ? 'Your last choice is being processed now.'
-                                          : 'Three options. One consequence chain. Choose what kind of mess you want next.',
-                                    ),
-                                    const SizedBox(height: 12),
-                                    for (final entry
-                                        in session.choices.asMap().entries) ...[
-                                      _ChoiceCard(
-                                        index: entry.key,
-                                        text: entry.value.text,
-                                        accent: presentation.accent,
-                                        enabled: !controller.isBusy,
-                                        onTap: () => controller.selectChoice(
-                                          entry.value,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 12),
-                                    ],
-                                    const SizedBox(height: 10),
-                                    Text(
-                                      'No rewind button. The story keeps the receipt.',
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(
-                                            color: const Color(
-                                              0xFFF6EAD7,
-                                            ).withValues(alpha: 0.86),
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                    ),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      child: controller.isBusy
-                          ? Padding(
-                              padding: const EdgeInsets.only(top: 12),
-                              child: _BusyFooter(accent: presentation.accent),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
+          child: Stack(
+            children: [
+              Positioned(
+                top: -90,
+                right: -50,
+                child: _BackdropOrb(
+                  size: 250,
+                  colors: [
+                    presentation.accent.withValues(alpha: 0.28),
+                    presentation.accent.withValues(alpha: 0),
                   ],
                 ),
               ),
-            ),
-          ],
+              const Positioned(
+                left: -30,
+                bottom: 80,
+                child: _BackdropOrb(
+                  size: 190,
+                  colors: [Color(0x66FFF4E6), Color(0x00FFF4E6)],
+                ),
+              ),
+              SafeArea(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    isCompact ? 16 : 20,
+                    18,
+                    isCompact ? 16 : 20,
+                    20,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _ScreenHeader(
+                        category: category,
+                        presentation: presentation,
+                        usesMockApi: usesMockApi,
+                        onClose: () {
+                          onCloseRequested();
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      Expanded(
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 260),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          child: SingleChildScrollView(
+                            key: ValueKey(
+                              session == null
+                                  ? 'loading-${category.id}'
+                                  : '${session.sessionId}-${session.round}',
+                            ),
+                            physics: const BouncingScrollPhysics(),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _RoundHero(
+                                  category: category,
+                                  presentation: presentation,
+                                  session: session,
+                                ),
+                                const SizedBox(height: 18),
+                                if (session == null)
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 24),
+                                    child: Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  )
+                                else ...[
+                                  if (controller.errorMessage != null) ...[
+                                    _InlineError(
+                                      message: controller.errorMessage!,
+                                      onDismiss: controller.clearError,
+                                    ),
+                                    const SizedBox(height: 16),
+                                  ],
+                                  _ScenarioCard(
+                                    scenario: session.scenario,
+                                    presentation: presentation,
+                                  ),
+                                  const SizedBox(height: 20),
+                                  _SectionLead(
+                                    title: 'Pick Your Move',
+                                    subtitle: controller.isBusy
+                                        ? 'Your last choice is being processed now.'
+                                        : 'Three options. One consequence chain. Choose what kind of mess you want next.',
+                                  ),
+                                  const SizedBox(height: 12),
+                                  for (final entry
+                                      in session.choices.asMap().entries) ...[
+                                    _ChoiceCard(
+                                      index: entry.key,
+                                      text: entry.value.text,
+                                      accent: presentation.accent,
+                                      enabled: !controller.isBusy,
+                                      onTap: () =>
+                                          controller.selectChoice(entry.value),
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ],
+                                  SizedBox(height: isCompact ? 8 : 10),
+                                  Text(
+                                    'No rewind button. The story keeps the receipt.',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: const Color(
+                                        0xFFF6EAD7,
+                                      ).withValues(alpha: 0.86),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        child: controller.isBusy
+                            ? Padding(
+                                padding: const EdgeInsets.only(top: 12),
+                                child: _BusyFooter(accent: presentation.accent),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -165,18 +193,7 @@ class _BackdropOrb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: SizedBox(
-        height: size,
-        width: size,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(colors: colors),
-          ),
-        ),
-      ),
-    );
+    return ChaosBackdropOrb(size: size, colors: colors);
   }
 }
 
@@ -230,28 +247,22 @@ class _TopPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
+
+    return ChaosStatusPill(
+      icon: icon,
+      label: label,
+      backgroundColor: Colors.white.withValues(alpha: 0.12),
+      foregroundColor: const Color(0xFFF6EAD7),
+      borderColor: Colors.white.withValues(alpha: 0.18),
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompact ? 12 : 14,
+        vertical: isCompact ? 7 : 8,
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: const Color(0xFFF6EAD7)),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFFF6EAD7),
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
+      iconSize: isCompact ? 14 : 16,
+      textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+        color: const Color(0xFFF6EAD7),
+        fontWeight: FontWeight.w700,
       ),
     );
   }
@@ -271,6 +282,7 @@ class _RoundHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
     final roundValue = session == null
         ? '--'
         : '${session.round}/${session.maxRounds}';
@@ -293,7 +305,7 @@ class _RoundHero extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [const Color(0xFF171312), presentation.accent],
         ),
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(isCompact ? 26 : 30),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.18),
@@ -303,7 +315,7 @@ class _RoundHero extends StatelessWidget {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(22),
+        padding: EdgeInsets.all(isCompact ? 18 : 22),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -320,7 +332,8 @@ class _RoundHero extends StatelessWidget {
               'Choose fast. Regret slowly.',
               style: theme.textTheme.headlineSmall?.copyWith(
                 color: const Color(0xFFF6EAD7),
-                fontSize: 30,
+                fontSize: isCompact ? 26 : 30,
+                height: isCompact ? 1.08 : null,
               ),
             ),
             const SizedBox(height: 10),
@@ -339,23 +352,43 @@ class _RoundHero extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 18),
-            Row(
-              children: [
-                Expanded(
-                  child: _HeroMetric(label: 'Round', value: roundValue),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _HeroMetric(label: 'Choices', value: choiceCount),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _HeroMetric(
-                    label: 'Tone',
-                    value: presentation.toneLabel,
-                  ),
-                ),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final metricWidth = isCompact
+                    ? (constraints.maxWidth - 10) / 2
+                    : (constraints.maxWidth - 20) / 3;
+
+                return Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    SizedBox(
+                      width: metricWidth,
+                      child: _HeroMetric(
+                        label: 'Round',
+                        value: roundValue,
+                        compact: isCompact,
+                      ),
+                    ),
+                    SizedBox(
+                      width: metricWidth,
+                      child: _HeroMetric(
+                        label: 'Choices',
+                        value: choiceCount,
+                        compact: isCompact,
+                      ),
+                    ),
+                    SizedBox(
+                      width: metricWidth,
+                      child: _HeroMetric(
+                        label: 'Tone',
+                        value: presentation.toneLabel,
+                        compact: isCompact,
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 16),
             ClipRRect(
@@ -367,7 +400,7 @@ class _RoundHero extends StatelessWidget {
                 valueColor: const AlwaysStoppedAnimation(Color(0xFFF6EAD7)),
               ),
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: isCompact ? 8 : 10),
             Text(
               helperText,
               style: theme.textTheme.bodyMedium?.copyWith(
@@ -410,20 +443,28 @@ class _HeroChip extends StatelessWidget {
 }
 
 class _HeroMetric extends StatelessWidget {
-  const _HeroMetric({required this.label, required this.value});
+  const _HeroMetric({
+    required this.label,
+    required this.value,
+    this.compact = false,
+  });
 
   final String label;
   final String value;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(compact ? 20 : 22),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 12 : 14,
+          vertical: compact ? 10 : 12,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -439,7 +480,7 @@ class _HeroMetric extends StatelessWidget {
               value,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 color: const Color(0xFFF6EAD7),
-                fontSize: 19,
+                fontSize: compact ? 17 : 19,
               ),
             ),
           ],
@@ -458,11 +499,12 @@ class _ScenarioCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
 
     return DecoratedBox(
       decoration: BoxDecoration(
         color: const Color(0xFFF8EDE0),
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(isCompact ? 26 : 30),
         border: Border.all(color: presentation.accent.withValues(alpha: 0.16)),
         boxShadow: [
           BoxShadow(
@@ -473,7 +515,7 @@ class _ScenarioCard extends StatelessWidget {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(22),
+        padding: EdgeInsets.all(isCompact ? 18 : 22),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -483,17 +525,18 @@ class _ScenarioCard extends StatelessWidget {
                 DecoratedBox(
                   decoration: BoxDecoration(
                     color: presentation.accent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(isCompact ? 16 : 18),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.all(12),
+                    padding: EdgeInsets.all(isCompact ? 10 : 12),
                     child: Icon(
                       presentation.icon,
                       color: const Color(0xFF1B1A18),
+                      size: isCompact ? 22 : 24,
                     ),
                   ),
                 ),
-                const SizedBox(width: 14),
+                SizedBox(width: isCompact ? 12 : 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -514,7 +557,7 @@ class _ScenarioCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            SizedBox(height: isCompact ? 16 : 18),
             Text(scenario, style: theme.textTheme.bodyLarge),
           ],
         ),
@@ -531,24 +574,16 @@ class _SectionLead extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            color: const Color(0xFFF6EAD7),
-            fontSize: 22,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          subtitle,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: const Color(0xFFF6EAD7).withValues(alpha: 0.84),
-          ),
-        ),
-      ],
+    return ChaosSectionHeader(
+      title: title,
+      subtitle: subtitle,
+      titleStyle: Theme.of(context).textTheme.titleLarge?.copyWith(
+        color: const Color(0xFFF6EAD7),
+        fontSize: MediaQuery.sizeOf(context).width < 380 ? 20 : 22,
+      ),
+      subtitleStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+        color: const Color(0xFFF6EAD7).withValues(alpha: 0.84),
+      ),
     );
   }
 }
@@ -572,11 +607,12 @@ class _ChoiceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final optionLabel = 'Option ${String.fromCharCode(65 + index)}';
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(isCompact ? 22 : 26),
         onTap: enabled ? onTap : null,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
@@ -592,7 +628,7 @@ class _ChoiceCard extends StatelessWidget {
                 accent.withValues(alpha: enabled ? 0.16 : 0.07),
               ],
             ),
-            borderRadius: BorderRadius.circular(26),
+            borderRadius: BorderRadius.circular(isCompact ? 22 : 26),
             border: Border.all(
               color: accent.withValues(alpha: enabled ? 0.2 : 0.1),
             ),
@@ -605,7 +641,7 @@ class _ChoiceCard extends StatelessWidget {
             ],
           ),
           child: Padding(
-            padding: const EdgeInsets.all(18),
+            padding: EdgeInsets.all(isCompact ? 16 : 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -623,14 +659,14 @@ class _ChoiceCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: isCompact ? 12 : 14),
                 Text(
                   text,
                   style: theme.textTheme.bodyLarge?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: isCompact ? 8 : 10),
                 Text(
                   enabled
                       ? 'Tap to commit this choice.'
@@ -657,13 +693,18 @@ class _ChoiceMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: EdgeInsets.symmetric(
+          horizontal: isCompact ? 9 : 10,
+          vertical: isCompact ? 5 : 6,
+        ),
         child: Text(
           label,
           style: Theme.of(
@@ -682,14 +723,19 @@ class _BusyFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: const Color(0xFFF8EDE0),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(isCompact ? 20 : 22),
         border: Border.all(color: accent.withValues(alpha: 0.16)),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: EdgeInsets.symmetric(
+          horizontal: isCompact ? 14 : 16,
+          vertical: isCompact ? 12 : 14,
+        ),
         child: Row(
           children: [
             SizedBox(

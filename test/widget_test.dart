@@ -6,6 +6,7 @@ import 'package:dynamic_scenario_game/features/game/domain/models/game_category.
 import 'package:dynamic_scenario_game/features/game/domain/models/game_session.dart';
 import 'package:dynamic_scenario_game/features/game/domain/repositories/game_repository.dart';
 import 'package:dynamic_scenario_game/features/game/presentation/controllers/game_controller.dart';
+import 'package:dynamic_scenario_game/features/game/presentation/screens/game_screen.dart';
 import 'package:dynamic_scenario_game/features/game/presentation/screens/home_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -55,6 +56,36 @@ void main() {
     expect(find.text('Continue As Guest'), findsOneWidget);
     expect(find.text('Sign Up'), findsOneWidget);
   });
+
+  testWidgets(
+    'game screen routes close and system back through the same handler',
+    (tester) async {
+      final controller = GameController(repository: _FakeGameRepository());
+      await controller.startGame(GameCategory.presets.first);
+
+      var closeRequests = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GameScreen(
+            controller: controller,
+            usesMockApi: false,
+            onCloseRequested: () async {
+              closeRequests += 1;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.close_rounded));
+      await tester.pump();
+      expect(closeRequests, 1);
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(closeRequests, 2);
+    },
+  );
 }
 
 class _FakeGameRepository implements GameRepository {
@@ -70,8 +101,20 @@ class _FakeGameRepository implements GameRepository {
   Future<GameSession> startGame({
     required GameCategory category,
     required int maxRounds,
-  }) {
-    throw UnimplementedError();
+  }) async {
+    return GameSession(
+      sessionId: 'session-1',
+      categoryId: category.id,
+      round: 1,
+      maxRounds: maxRounds,
+      scenario: 'A test scenario appears.',
+      choices: const [
+        ChoiceOption(id: 'a', text: 'Option A'),
+        ChoiceOption(id: 'b', text: 'Option B'),
+        ChoiceOption(id: 'c', text: 'Option C'),
+      ],
+      isFinal: false,
+    );
   }
 }
 

@@ -68,7 +68,7 @@ class _AiScenarioGameAppState extends State<AiScenarioGameApp> {
     return 'home';
   }
 
-  Widget _buildCurrentScreen() {
+  Widget _buildCurrentScreen(BuildContext context) {
     final session = _controller.session;
 
     if (session?.isFinal ?? false) {
@@ -81,7 +81,11 @@ class _AiScenarioGameAppState extends State<AiScenarioGameApp> {
     }
 
     if (session != null || _controller.stage == GameStage.starting) {
-      return GameScreen(controller: _controller, usesMockApi: _usesMockApi);
+      return GameScreen(
+        controller: _controller,
+        usesMockApi: _usesMockApi,
+        onCloseRequested: () => _handleGameCloseRequested(context),
+      );
     }
 
     return HomeScreen(
@@ -89,6 +93,48 @@ class _AiScenarioGameAppState extends State<AiScenarioGameApp> {
       usesMockApi: _usesMockApi,
       firebaseBootstrap: widget.firebaseBootstrap,
     );
+  }
+
+  Future<void> _handleGameCloseRequested(BuildContext context) async {
+    if (_controller.isBusy) {
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      messenger
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Please wait for the current turn to finish.'),
+          ),
+        );
+      return;
+    }
+
+    final shouldLeave = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Leave this run?'),
+          content: const Text(
+            'Your current scenario will be discarded and you will return to the home screen.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Stay'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Leave'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || shouldLeave != true) {
+      return;
+    }
+
+    _controller.backToHome();
   }
 
   @override
@@ -107,7 +153,7 @@ class _AiScenarioGameAppState extends State<AiScenarioGameApp> {
         animation: _controller,
         builder: (context, _) {
           final screenKey = _screenKeyForCurrentState();
-          final screen = _buildCurrentScreen();
+          final screen = _buildCurrentScreen(context);
 
           return AnimatedSwitcher(
             duration: const Duration(milliseconds: 320),
@@ -117,10 +163,7 @@ class _AiScenarioGameAppState extends State<AiScenarioGameApp> {
             layoutBuilder: (currentChild, previousChildren) {
               return Stack(
                 alignment: Alignment.topLeft,
-                children: [
-                  ...previousChildren,
-                  ?currentChild,
-                ],
+                children: [...previousChildren, ?currentChild],
               );
             },
             transitionBuilder: (child, animation) {

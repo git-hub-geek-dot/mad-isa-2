@@ -79,4 +79,25 @@ class FirebaseAuthService {
 
     return _auth.currentUser;
   }
+
+  Future<User?> signIn({
+    required String email,
+    required String password,
+  }) async {
+    final trimmedEmail = email.trim();
+
+    final current = _auth.currentUser;
+    if (current != null && current.isAnonymous) {
+      await _auth.signOut();
+    }
+
+    final credential = await _auth.signInWithEmailAndPassword(
+      email: trimmedEmail,
+      password: password,
+    );
+
+    return credential.user;
+  }
+
+  Future<void> signOut() => _auth.signOut();
 }
